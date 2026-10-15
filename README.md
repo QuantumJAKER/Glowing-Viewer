@@ -6,7 +6,7 @@ selector for particles). Inspired by
 [Selective Glowing (Fabric)](https://modrinth.com/mod/selective-glowing),
 reimplemented as a Forge mod.
 
-> **Status:** Work in progress (`0.1.2`). The mod compiles, builds, and loads
+> **Status:** Work in progress (`0.1.3`). The mod compiles, builds, and loads
 > on a dedicated server, but has not been verified in-game with real players
 > yet.
 
@@ -83,9 +83,13 @@ Forge toolchain (takes a few minutes).
 ## Technical overview
 
 - `GlowManager`: in-memory state (`target → viewer → expiry`), packet dispatch.
+- `GlowNettyHandler`: per-player pipeline interception – every outgoing
+  entity-data packet is corrected inline, so even genuine vanilla flag
+  updates (sprint, sneak, …) carry the fake glow without flicker.
 - `GlowCommands`: `/glow` registration via `RegisterCommandsEvent`.
-- `GlowEventHandler`: once-per-second tick (expiry + resync), `StartTracking`
-  push, re-push on login/respawn/dimension change.
+- `GlowEventHandler`: pipeline attach/detach on login/logout, re-push on
+  login/respawn/dimension change/tracking start, twice-per-second tick
+  (expiry + repair fallback).
 - No mixins, no custom packets, no client dependency, no persistence.
 
 ## License

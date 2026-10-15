@@ -3,6 +3,9 @@
 package com.quantumjaker.glowingviewer;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -16,6 +19,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,16 +31,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * Core state and packet logic for selective glowing.
  *
  * <p>The glowing flag ({@code 0x40} in the shared-flags byte, slot 0) is never
- * set on the server-side entity. Instead, vanilla
- * {@link ClientboundSetEntityDataPacket}s carrying the set bit are sent
- * directly to each viewer ({@link #pushToViewers(Entity)}). Tracking
- * (re-)starts re-push with a small delay, and a one-second resync repairs
- * states overwritten by genuine vanilla flag updates. This keeps the mod
- * additive: real vanilla glowing stays visible to everyone, and no bytecode
- * manipulation is required. State is kept in memory only: nothing is saved,
- * so a server restart clears all glowing overrides.</p>
+ * set on the server-side entity. Instead, outgoing entity-data packets are
+ * corrected per viewer by a Netty pipeline handler ({@link GlowNettyHandler}),
+ * so even genuine vanilla flag broadcasts (sprint, sneak, effect end, ...)
+ * carry the faked bit for viewers with an active override. Direct pushes
+ * ({@link #pushToViewers(Entity)}) and a twice-per-second repair pass act as
+ * fallback. This keeps the mod additive: real vanilla glowing stays visible
+ * to everyone, and no bytecode manipulation is required. State is kept in
+ * memory only: nothing is saved, so a server restart clears all glowing
+ * overrides.</p>
  *
- * <p>All methods run on the server thread.</p>
+ * <p>All methods run on the server thread, except the Netty handler lookups
+ * which only read {@link #VIEWER_TARGET_IDS}.</p>
  */
 public final class GlowManager {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -49,6 +55,13 @@ public final class GlowManager {
 
     /** Target UUID -&gt; (viewer UUID -&gt; expiry game time in ticks). */
     private static final Map<UUID, Map<UUID, Long>> ENTRIES = new ConcurrentHashMap<>();
+
+    /**
+     * Viewer UUID -&gt; glowing target entity ids. Maintained on the server
+     * thread only; published sets are never mutated in place, so the Netty
+     * handler thread can read them safely at any time.
+     */
+    private static final Map<UUID, Set<Integer>> VIEWER_TARGET_IDS = new ConcurrentHashMap<>();
 
     /** Delayed re-pushes scheduled by tracking events. */
     private static final List<PendingPush> PENDING = new ArrayList<>();
@@ -77,12 +90,14 @@ public final class GlowManager {
         GlowManager.server = server;
         ENTRIES.clear();
         PENDING.clear();
+        VIEWER_TARGET_IDS.clear();
         LOGGER.info("[GlowingViewer] Server starting with a fresh glow state (nothing persisted).");
     }
 
     public static void onServerStopped() {
         ENTRIES.clear();
         PENDING.clear();
+        VIEWER_TARGET_IDS.clear();
         server = null;
     }
 
@@ -148,6 +163,7 @@ public final class GlowManager {
             ENTRIES.put(target.getUUID(), map);
             pushToViewers(target);
         }
+        refreshViewerTargetIds();
     }
 
     /**
@@ -196,6 +212,7 @@ public final class GlowManager {
             }
         }
         dropPendingFor(targets);
+        refreshViewerTargetIds();
     }
 
     /**
@@ -281,6 +298,7 @@ public final class GlowManager {
         for (UUID targetUuid : emptyTargets) {
             ENTRIES.remove(targetUuid);
         }
+        refreshViewerTargetIds();
     }
 
     // ------------------------------------------------------------------
@@ -376,6 +394,95 @@ public final class GlowManager {
         return new ClientboundSetEntityDataPacket(entityId,
                 List.of(new SynchedEntityData.DataValue<>(SHARED_FLAGS.getId(),
                         EntityDataSerializers.BYTE, bits)));
+    }
+
+    /**
+     * Rebuilds the Netty-thread-readable id sets from the UUID state.
+     * Server thread only. Entity ids are never reused within a session, so a
+     * slightly stale set can only miss a glow briefly, never misattribute one.
+     */
+    private static void refreshViewerTargetIds() {
+        Map<UUID, Set<Integer>> fresh = new HashMap<>();
+        long current = now();
+        for (Map.Entry<UUID, Map<UUID, Long>> entry : ENTRIES.entrySet()) {
+            Entity target = findEntity(entry.getKey());
+            if (target == null) {
+                continue;
+            }
+            int id = target.getId();
+            for (Map.Entry<UUID, Long> viewer : entry.getValue().entrySet()) {
+                if (viewer.getValue() <= current) {
+                    continue;
+                }
+                fresh.computeIfAbsent(viewer.getKey(), key -> new HashSet<>()).add(id);
+            }
+        }
+        VIEWER_TARGET_IDS.clear();
+        for (Map.Entry<UUID, Set<Integer>> entry : fresh.entrySet()) {
+            Set<Integer> ids = ConcurrentHashMap.newKeySet();
+            ids.addAll(entry.getValue());
+            VIEWER_TARGET_IDS.put(entry.getKey(), ids);
+        }
+    }
+
+    /**
+     * Netty-thread entry point: returns a copy of the packet with the glowing
+     * bit set when the viewer has an active override for the target, or null
+     * when the packet passes through unchanged. Never touches the level.
+     */
+    static ClientboundSetEntityDataPacket fakeForViewer(ClientboundSetEntityDataPacket packet,
+            UUID viewerId) {
+        Set<Integer> ids = VIEWER_TARGET_IDS.get(viewerId);
+        if (ids == null || !ids.contains(packet.id())) {
+            return null;
+        }
+        return withGlowingBit(packet);
+    }
+
+    /**
+     * Netty-thread entry point for bundles: collects faked copies of the
+     * contained entity-data packets that need overriding. The caller writes
+     * them right after the original bundle.
+     */
+    static List<ClientboundSetEntityDataPacket> fakesForBundle(ClientboundBundlePacket bundle,
+            UUID viewerId) {
+        Set<Integer> ids = VIEWER_TARGET_IDS.get(viewerId);
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<ClientboundSetEntityDataPacket> fakes = null;
+        for (Packet<? super ClientGamePacketListener> sub : bundle.subPackets()) {
+            if (sub instanceof ClientboundSetEntityDataPacket data && ids.contains(data.id())) {
+                if (fakes == null) {
+                    fakes = new ArrayList<>();
+                }
+                fakes.add(withGlowingBit(data));
+            }
+        }
+        return fakes == null ? List.of() : fakes;
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private static ClientboundSetEntityDataPacket withGlowingBit(ClientboundSetEntityDataPacket packet) {
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
+        boolean found = false;
+        for (SynchedEntityData.DataValue<?> value : packet.packedItems()) {
+            if (value.id() == SHARED_FLAGS.getId()) {
+                found = true;
+                byte bits = (Byte) value.value();
+                SynchedEntityData.DataValue<Byte> replacement = new SynchedEntityData.DataValue<>(value.id(),
+                        (net.minecraft.network.syncher.EntityDataSerializer<Byte>) (net.minecraft.network.syncher.EntityDataSerializer) value.serializer(),
+                        (byte) (bits | GLOWING_BIT));
+                values.add(replacement);
+            } else {
+                values.add(value);
+            }
+        }
+        if (!found) {
+            values.add(new SynchedEntityData.DataValue<>(SHARED_FLAGS.getId(), EntityDataSerializers.BYTE,
+                    GLOWING_BIT));
+        }
+        return new ClientboundSetEntityDataPacket(packet.id(), values);
     }
 
     private static void sendSafely(@Nullable ServerPlayer viewer, ClientboundSetEntityDataPacket packet) {

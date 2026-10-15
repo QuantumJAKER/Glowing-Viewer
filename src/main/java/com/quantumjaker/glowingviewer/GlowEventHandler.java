@@ -65,6 +65,11 @@ public final class GlowEventHandler {
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer viewer)) {
+            return;
+        }
+        // Attach first so every packet from here on is corrected inline.
+        GlowNettyHandler.attach(viewer);
         pushActiveFor(event);
     }
 
@@ -89,6 +94,13 @@ public final class GlowEventHandler {
             GlowManager.pushActiveFor(viewer);
         } catch (Exception e) {
             // Ignore.
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer viewer) {
+            GlowNettyHandler.detach(viewer);
         }
     }
 }
