@@ -26,7 +26,6 @@ public class GlowingViewerMod {
     public GlowingViewerMod() {
         MinecraftForge.EVENT_BUS.addListener((ServerStartingEvent event) -> {
             GlowManager.onServerStarting(event.getServer());
-            LOGGER.info("[GlowingViewer] Server starting, glow state loading.");
         });
         MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> {
             GlowManager.onServerStopped();

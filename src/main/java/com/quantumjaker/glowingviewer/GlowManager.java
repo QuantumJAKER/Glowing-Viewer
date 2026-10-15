@@ -338,8 +338,20 @@ public final class GlowManager {
         if (server == null || viewer == null || ENTRIES.isEmpty()) {
             return;
         }
+        // Players first via the player list: level scans are not guaranteed
+        // to include player entities, and this is the reliable path for them.
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            try {
+                pushIfActive(player, viewer);
+            } catch (Exception e) {
+                // Ignore: housekeeping must never break event handling.
+            }
+        }
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {
+                if (entity instanceof ServerPlayer) {
+                    continue; // already covered via the player list above
+                }
                 try {
                     pushIfActive(entity, viewer);
                 } catch (Exception e) {
@@ -386,6 +398,12 @@ public final class GlowManager {
     private static Entity findEntity(UUID uuid) {
         if (server == null) {
             return null;
+        }
+        // Players first: level entity scans are not guaranteed to include
+        // player entities, and almost all glow targets are players.
+        ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+        if (player != null) {
+            return player;
         }
         for (ServerLevel level : server.getAllLevels()) {
             for (Entity entity : level.getAllEntities()) {

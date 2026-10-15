@@ -32,8 +32,9 @@ public final class GlowEventHandler {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
-        // Expiry granularity of one second is plenty for a seconds-based duration.
-        if (++tickCounter >= 20) {
+        // Twice per second: expiry plus repair of states overwritten by
+        // genuine vanilla flag updates (sneak, sprint, effect end, ...).
+        if (++tickCounter >= 10) {
             tickCounter = 0;
             try {
                 GlowManager.tick();

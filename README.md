@@ -6,7 +6,7 @@ selector for particles). Inspired by
 [Selective Glowing (Fabric)](https://modrinth.com/mod/selective-glowing),
 reimplemented as a Forge mod.
 
-> **Status:** Work in progress (`0.1.1`). The mod compiles, builds, and loads
+> **Status:** Work in progress (`0.1.2`). The mod compiles, builds, and loads
 > on a dedicated server, but has not been verified in-game with real players
 > yet.
 
@@ -63,7 +63,7 @@ execute as @a at @s run glow give @e[distance=..10] 10 @s
   vanilla.
 - **Robustness:** After chunk (re-)loads, logins, respawns, and dimension
   changes, the faked state is re-sent (slightly delayed so vanilla packets
-  cannot overtake it). A one-second resync repairs states that genuine
+  cannot overtake it). A twice-per-second resync repairs states that genuine
   vanilla updates overwrote in between. All failure paths are defensive:
   glow logic can never crash the server tick or entity tracking.
 
