@@ -6,7 +6,7 @@ selector for particles). Inspired by
 [Selective Glowing (Fabric)](https://modrinth.com/mod/selective-glowing),
 reimplemented as a Forge mod.
 
-> **Status:** Work in progress (`0.1.0`). The mod compiles, builds, and loads
+> **Status:** Work in progress (`0.1.1`). The mod compiles, builds, and loads
 > on a dedicated server, but has not been verified in-game with real players
 > yet.
 
@@ -34,9 +34,6 @@ commands also work with `execute`, command blocks, and datapacks.
 
 # Remove: for everyone or only for specific viewers
 /glow clear <targets> [viewers]
-
-# Remove everything at once (e.g. minigame reset)
-/glow clearall
 ```
 
 `<targets>` are entities (`@e`, `@s`, …), `<viewers>` are players.

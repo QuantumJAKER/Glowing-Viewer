@@ -198,32 +198,6 @@ public final class GlowManager {
         dropPendingFor(targets);
     }
 
-    /** Removes every glowing override (used by {@code /glow clearall}). */
-    public static Set<UUID> clearAll() {
-        Set<UUID> removed = new HashSet<>(ENTRIES.keySet());
-        if (server != null && !removed.isEmpty()) {
-            for (UUID targetUuid : removed) {
-                Map<UUID, Long> viewers = ENTRIES.get(targetUuid);
-                if (viewers == null) {
-                    continue;
-                }
-                Entity target = findEntity(targetUuid);
-                if (target == null) {
-                    continue;
-                }
-                for (UUID viewerId : viewers.keySet()) {
-                    ServerPlayer viewer = server.getPlayerList().getPlayer(viewerId);
-                    if (viewer != null) {
-                        sendCorrection(target, viewer);
-                    }
-                }
-            }
-        }
-        ENTRIES.clear();
-        PENDING.clear();
-        return removed;
-    }
-
     /**
      * Schedules a re-push shortly after tracking starts. Delayed because the
      * vanilla pairing packets are sent around the same event and would

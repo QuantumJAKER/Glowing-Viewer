@@ -26,7 +26,6 @@ import java.util.Collection;
  * <pre>
  * /glow give &lt;targets&gt; &lt;durationSeconds&gt; &lt;viewers&gt;
  * /glow clear &lt;targets&gt; [viewers]
- * /glow clearall
  * </pre>
  */
 public final class GlowCommands {
@@ -51,17 +50,14 @@ public final class GlowCommands {
                                             Collection<ServerPlayer> viewers =
                                                     EntityArgument.getPlayers(context, "viewers");
                                             return clear(context, viewers);
-                                        }))))
-                .then(Commands.literal("clearall")
-                        .executes(GlowCommands::clearAll)));
+                                        })))));
     }
 
     private static int usage(CommandContext<CommandSourceStack> context) {
         context.getSource().sendSuccess(() -> Component.literal(
                 "Usage:\n"
                         + "/glow give <targets> <durationSeconds> <viewers>\n"
-                        + "/glow clear <targets> [viewers]\n"
-                        + "/glow clearall"), false);
+                        + "/glow clear <targets> [viewers]"), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -86,13 +82,5 @@ public final class GlowCommands {
                         targets.size())),
                 true);
         return targets.size();
-    }
-
-    private static int clearAll(CommandContext<CommandSourceStack> context) {
-        int removed = GlowManager.clearAll().size();
-        context.getSource().sendSuccess(
-                () -> Component.literal(String.format("Removed all glowing overrides (%d targets).", removed)),
-                true);
-        return removed;
     }
 }
