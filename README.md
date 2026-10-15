@@ -6,7 +6,7 @@ selector for particles). Inspired by
 [Selective Glowing (Fabric)](https://modrinth.com/mod/selective-glowing),
 reimplemented as a Forge mod.
 
-> **Status:** Work in progress (`0.1.3`). The mod compiles, builds, and loads
+> **Status:** Work in progress (`0.2.0`). The mod compiles, builds, and loads
 > on a dedicated server, but has not been verified in-game with real players
 > yet.
 
