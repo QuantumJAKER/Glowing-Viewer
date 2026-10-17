@@ -6,10 +6,6 @@ selector for particles). Inspired by
 [Selective Glowing (Fabric)](https://modrinth.com/mod/selective-glowing),
 reimplemented as a Forge mod.
 
-> **Status:** Work in progress (`0.2.0`). The mod compiles, builds, and loads
-> on a dedicated server, but has not been verified in-game with real players
-> yet.
-
 Vanilla clients can join without installing the mod: only vanilla packets
 are sent.
 
@@ -103,5 +99,5 @@ license. The Forge MDK license texts live under `legal/` and are unaffected.
 ## AI disclosure
 
 This mod was developed fully by AI.
-All code was reviewed and verified by builds and a dedicated-server smoke
-test; in-game verification with real players is still pending.
+All code was reviewed and verified by builds, a dedicated-server smoke test
+and in-game testing with real players.
